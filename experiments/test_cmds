@@ -1,0 +1,37 @@
+require 'cunn'
+require 'nngraph'
+require 'optim'
+require 'paths'
+require 'nn'
+
+nUtils = dofile('../modules/netUtils.lua')
+vUtils = dofile('../modules/visUtils.lua')
+transformer = dofile('../modules/transformer.lua')
+primitives = dofile('../modules/primitives.lua')
+transformerSurface = dofile('../modules/transformerSurface.lua')
+chamferUtils = dofile('../modules/surface/chamferCriterionSeparable.lua')
+symUtils = dofile('../modules/surface/symmetryCriterion.lua')
+vE = dofile('../modules/volumeEncoder.lua')
+mUtils = dofile('../modules/meshUtils.lua')
+mc = dofile('../modules/marchingCubes.lua')
+cbData = dofile('../data/cadConfigsChamfer.lua')
+
+params = {}
+params.normFactor = 'Surf'
+if(params.useCubOnly == 1) then
+    params.nz = 3-- dimension of cuboid gen space
+    params.primTypes = {'Cu'}
+else
+    params.nz = 3 + 1-- dimension of cuboid gen space + cylinder space + null space
+    params.primTypes = {'Cu','Nu'}
+end
+
+params.nParts = 10
+
+params.primTypesSurface = {}
+for p=1,#params.primTypes do
+    params.primTypesSurface[p] = params.primTypes[p]
+    if(params.primTypes[p] ~= 'Nu') then params.primTypesSurface[p] = params.primTypes[p] .. '_' .. params.normFactor end
+end
+
+params.nSamplesChamfer = 150

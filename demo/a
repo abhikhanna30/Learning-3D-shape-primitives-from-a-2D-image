@@ -1,0 +1,15 @@
+mName = modelName:split('.mat$')[1]
+gtMesh = params.visMeshesDir .. mName .. '_gt.obj'
+gtPng = params.visMeshesDir .. mName .. '_gt.png'
+mUtils.writeObj(gtMesh, shapeVar.vertices, shapeVar.faces)
+predMesh = params.visMeshesDir .. mName .. '_pred.obj'
+predPng = params.visMeshesDir .. mName .. '_pred.png'
+mUtils.saveParts(predParams, predMesh , params.primTypes)
+
+mName = modelName:split('.mat$')[1]
+gtMesh = params.visMeshesDir .. mName .. '_gt.obj'
+gtPng = params.visMeshesDir .. mName .. '_gt.png'
+predMesh = params.visMeshesDir .. mName .. '_pred.obj'
+predPng = params.visMeshesDir .. mName .. '_pred.png'
+mUtils.renderMesh(blenderExec, blendFile, gtMesh, gtPng)
+mUtils.renderMesh(blenderExec, blendFile, predMesh, predPng)

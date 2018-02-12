@@ -1,0 +1,106 @@
+
+
+require 'cunn'
+require 'nngraph'
+require 'optim'
+
+params = {}
+params.learningRate = 0.001
+params.meshSaveIter = 1000
+params.numTrainIter = 50000
+params.batchSize = 32
+params.batchSizeVis = 4
+params.visPower = 0.25
+params.lossPower = 2
+params.chamferLossWt = 1
+params.symLossWt = 1
+params.gridSize = 64
+params.gridBound = 0.5
+params.useBn = 1
+params.nParts = 6
+params.disp = 0
+params.imsave = 0
+params.shapeLrDecay = 1
+params.probLrDecay = 1
+params.gpu = 1
+params.visIter = 100
+params.modelIter = 2 --data loader reloads models after these many iterations
+params.synset = 03001629 --chair:3001627, aero:2691156, table:4379243
+params.name = 'mainCadAutoEnc'
+params.bMomentum = 0.9 --baseline momentum for reinforce
+params.entropyWt = 0
+params.nullReward = 0.0001
+params.nSamplePoints = 1000
+params.nSamplesChamfer = 150 --number of points we'll sample per part
+params.useCubOnly = 0
+params.usePretrain = 0
+params.normFactor = 'Surf'
+params.pretrainNet = 'chairChamferSurf_null_small_init_prob0pt0001_shape0pt01'
+params.pretrainLrShape = 0.01
+params.pretrainLrProb = 0.0001
+params.pretrainIter = 20000
+
+params.gpu=1 ;params.nParts=20 ;params.nullReward=0; params.probLrDecay=0.0001 ;params.shapeLrDecay=0.01 ;params.synset=3001629 ;params.usePretrain=0 ;params.numTrainIter=20000; params.name=St1_grid64_test
+
+primitives = dofile('../modules/primitives.lua')
+vE = dofile('../modules/volumeEncoder.lua')
+cbData = dofile('../data/cadConfigsChamfer.lua')
+
+for k,v in pairs(params) do params[k] = tonumber(os.getenv(k)) or os.getenv(k) or params[k] end
+
+if params.useBn == 0 then params.useBn = false end
+if params.usePretrain == 0 then params.usePretrain = false end
+params.synset = '0' .. tostring(params.synset) --to resolve string/number issues in passing bash arguments
+params.pretrainLrs = {params.pretrainLrShape, params.pretrainLrProb}
+
+params.modelsDataDir = '/home/abhijeek/shapenet/chamferData/' .. params.synset
+params.visDir = '../cachedir/visualization/' .. params.name
+params.visMeshesDir = '../cachedir/visualization/meshes/' .. params.name
+params.snapshotDir = '../cachedir/snapshots/' .. params.name
+
+dataLoader = cbData.SimpleCad(params)
+
+if(params.useCubOnly == 1) then
+    params.nz = 3-- dimension of cuboid gen space
+        params.primTypes = {'Cu'}
+        else
+            params.nz = 3 + 1-- dimension of cuboid gen space + cylinder space + null space
+                params.primTypes = {'Cu','Nu'}
+                end
+                params.nPrimChoices = #params.primTypes
+                params.intrinsicReward = torch.Tensor(#params.primTypes):fill(0)
+                for p=1,#params.primTypes do
+                    if(params.primTypes[p] == 'Nu') then params.intrinsicReward[p] = -params.nullReward end
+                    end
+
+-- Net for predicting primitives
+netPred, outChannelsInput = vE.convEncoderSimple3d(5,4,2,params.useBn)
+netPred:apply(nUtils.weightsInit)
+outChannels = outChannelsInput
+for nLayer=1,2 do -- fc layers for joint reasoning
+    netPred:add(nn.VolumetricConvolution(outChannels, outChannels, 1, 1, 1))
+        if(params.useBn) then netPred:add(nn.VolumetricBatchNormalization(outChannels)) end
+            netPred:add(nn.LeakyReLU(0.2, true))
+            end
+            netPred:apply(nUtils.weightsInit)
+            biasTerms = {}
+
+            biasTerms.quat = torch.Tensor({1,0,0,0})
+            biasTerms.shape = torch.Tensor(params.nz):fill(-3)/params.shapeLrDecay
+            biasTerms.prob = torch.Tensor(#params.primTypes):fill(0)
+
+            for p=1,#params.primTypes do
+                if(params.primTypes[p] == 'Cu') then biasTerms.prob[p] = 2.5/params.probLrDecay; end
+                end
+
+                primitivesTable = primitives.primitiveSelectorTable(params, outChannels, biasTerms)
+                netPred:add(primitivesTable)
+
+
+netPred = netPred:cuda()
+
+inputVol, tsdfGt, sampledPoints = unpack(dataLoader:forward())
+    inputVol = inputVol:clone():cuda()
+        sampledPoints = sampledPoints:cuda()
+            predParts = netPred:forward(inputVol)
+
